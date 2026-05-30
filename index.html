@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#111827" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <title>안심마커 길잡이 - ArUco PWA</title>
+  <!-- 오늘 바로 테스트하기 위한 CDN 방식입니다. GitHub Pages/HTTPS 환경에서 실행하세요. -->
+  <script src="https://cdn.jsdelivr.net/gh/jcmellado/js-aruco/src/cv.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/jcmellado/js-aruco/src/aruco.js"></script>
+  <style>
+    :root { color-scheme: dark; --bg:#0b1020; --card:#151b2e; --line:#263149; --text:#eef2ff; --muted:#aab4cf; --accent:#60a5fa; --danger:#f87171; --safe:#34d399; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background:var(--bg); color:var(--text); }
+    header { padding:18px 16px 8px; }
+    h1 { margin:0 0 8px; font-size:22px; }
+    p { margin:6px 0; color:var(--muted); line-height:1.45; }
+    main { padding:12px 16px 28px; max-width:880px; margin:0 auto; }
+    .card { background:var(--card); border:1px solid var(--line); border-radius:18px; padding:14px; margin:12px 0; box-shadow:0 10px 30px rgba(0,0,0,.25); }
+    .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+    button, a.button { appearance:none; border:0; border-radius:14px; padding:13px 15px; background:#2563eb; color:white; font-weight:700; font-size:16px; text-decoration:none; display:inline-flex; align-items:center; justify-content:center; min-height:46px; }
+    button.secondary, a.secondary { background:#334155; }
+    button.warn { background:#b91c1c; }
+    button:disabled { opacity:.55; }
+    .status { font-size:18px; font-weight:700; margin-top:8px; }
+    .big { font-size:24px; font-weight:800; margin-top:8px; }
+    video { display:none; }
+    canvas { width:100%; max-height:58vh; object-fit:contain; border-radius:16px; background:#000; border:1px solid var(--line); }
+    .pill { display:inline-block; padding:6px 10px; border-radius:999px; background:#1f2937; color:#dbeafe; margin:4px 4px 0 0; font-size:14px; }
+    .safe { color:var(--safe); }
+    .danger { color:var(--danger); }
+    textarea { width:100%; min-height:150px; border-radius:12px; border:1px solid var(--line); background:#0f172a; color:#e5e7eb; padding:12px; font-size:14px; }
+    label { display:block; color:#cbd5e1; margin:10px 0 6px; font-weight:700; }
+    .small { font-size:13px; color:#93a4c6; }
+    footer { color:#7f8dac; font-size:12px; padding:20px 16px 28px; text-align:center; }
+  </style>
+</head>
+<body>
+<header>
+  <h1>안심마커 길잡이</h1>
+  <p>ArUco 마커를 스마트폰 카메라로 읽고, ID별 안내문을 음성으로 말하는 실험용 PWA입니다.</p>
+</header>
+<main>
+  <section class="card">
+    <div class="row">
+      <button id="startBtn">카메라 시작</button>
+      <button id="stopBtn" class="secondary" disabled>정지</button>
+      <button id="repeatBtn" class="secondary">다시 안내</button>
+      <a class="button secondary" href="markers.html">마커 만들기</a>
+    </div>
+    <p class="small">스마트폰에서는 Chrome/Edge/Samsung Internet 권장. iPhone Safari에서는 외부 라이브러리 로딩과 음성 출력 정책 때문에 한 번 더 터치가 필요할 수 있습니다.</p>
+    <div class="status" id="status">대기 중</div>
+    <div class="big" id="lastGuide">아직 인식된 마커가 없습니다.</div>
+  </section>
+
+  <section class="card">
+    <video id="video" playsinline muted></video>
+    <canvas id="canvas" width="640" height="480"></canvas>
+    <p id="debug" class="small">카메라 시작 후 마커를 0.5~2m 거리에서 비춰 보세요.</p>
+  </section>
+
+  <section class="card">
+    <h2>마커 ID 안내 설정</h2>
+    <p>오늘 테스트용 기본값입니다. 수정 후 저장하면 스마트폰에 저장됩니다.</p>
+    <label for="configBox">JSON 설정</label>
+    <textarea id="configBox"></textarea>
+    <div class="row">
+      <button id="saveConfigBtn" class="secondary">설정 저장</button>
+      <button id="resetConfigBtn" class="warn">기본값 복원</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>오늘 테스트 성공 기준</h2>
+    <p><span class="pill">1</span> 마커 0~5번을 출력한다.</p>
+    <p><span class="pill">2</span> 벽이나 문 옆에 10~15cm 크기로 붙인다.</p>
+    <p><span class="pill">3</span> 스마트폰으로 비추면 장소명이 음성으로 나온다.</p>
+    <p><span class="pill">4</span> 위험 마커는 진동과 경고문이 나온다.</p>
+  </section>
+</main>
+<footer>실험용 보조 앱입니다. 실제 보행 안전을 보장하지 않으며, 흰지팡이와 보호자 확인을 함께 사용하세요.</footer>
+
+<script>
+const DEFAULT_CONFIG = {
+  "0": { name: "침대 끝", type: "safe", message: "침대 끝입니다. 안전 기준점입니다." },
+  "1": { name: "화장실 문", type: "guide", message: "화장실 문입니다. 문턱을 조심하세요." },
+  "2": { name: "현관", type: "guide", message: "현관입니다. 외출 기준점입니다." },
+  "3": { name: "욕실 문턱", type: "danger", message: "문턱 위험입니다. 앞으로 이동하지 마세요. 지팡이로 바닥을 확인하세요." },
+  "4": { name: "소파 등받이", type: "safe", message: "소파 등받이입니다. 손을 대도 안전한 기준점입니다." },
+  "5": { name: "계단 앞", type: "danger", message: "계단 위험입니다. 앞으로 이동하지 마세요." }
+};
+
+const video = document.getElementById('video');
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d', { willReadFrequently: true });
+const startBtn = document.getElementById('startBtn');
+const stopBtn = document.getElementById('stopBtn');
+const repeatBtn = document.getElementById('repeatBtn');
+const statusEl = document.getElementById('status');
+const lastGuideEl = document.getElementById('lastGuide');
+const debugEl = document.getElementById('debug');
+const configBox = document.getElementById('configBox');
+const saveConfigBtn = document.getElementById('saveConfigBtn');
+const resetConfigBtn = document.getElementById('resetConfigBtn');
+
+let stream = null;
+let detector = null;
+let running = false;
+let lastSpokenKey = '';
+let lastSpokenAt = 0;
+let lastMessage = '';
+let config = loadConfig();
+configBox.value = JSON.stringify(config, null, 2);
+
+function loadConfig(){
+  try { return JSON.parse(localStorage.getItem('ansimMarkerConfig')) || DEFAULT_CONFIG; }
+  catch { return DEFAULT_CONFIG; }
+}
+function saveConfig(){
+  try {
+    config = JSON.parse(configBox.value);
+    localStorage.setItem('ansimMarkerConfig', JSON.stringify(config));
+    speak('설정을 저장했습니다.');
+  } catch(e) {
+    alert('JSON 형식에 오류가 있습니다: ' + e.message);
+  }
+}
+function resetConfig(){
+  config = DEFAULT_CONFIG;
+  configBox.value = JSON.stringify(config, null, 2);
+  localStorage.setItem('ansimMarkerConfig', JSON.stringify(config));
+  speak('기본 설정으로 복원했습니다.');
+}
+
+function speak(text){
+  lastMessage = text;
+  lastGuideEl.textContent = text;
+  if (!('speechSynthesis' in window)) return;
+  window.speechSynthesis.cancel();
+  const utter = new SpeechSynthesisUtterance(text);
+  utter.lang = 'ko-KR';
+  utter.rate = 1.0;
+  utter.pitch = 1.0;
+  window.speechSynthesis.speak(utter);
+}
+
+function vibrate(pattern){
+  if (navigator.vibrate) navigator.vibrate(pattern);
+}
+
+function markerCenter(marker){
+  const c = marker.corners;
+  const x = (c[0].x+c[1].x+c[2].x+c[3].x)/4;
+  const y = (c[0].y+c[1].y+c[2].y+c[3].y)/4;
+  return {x,y};
+}
+function markerSizePx(marker){
+  const c = marker.corners;
+  const dist = (a,b)=>Math.hypot(a.x-b.x, a.y-b.y);
+  return (dist(c[0],c[1])+dist(c[1],c[2])+dist(c[2],c[3])+dist(c[3],c[0]))/4;
+}
+function directionText(centerX){
+  if (centerX < canvas.width * 0.38) return '왼쪽 방향';
+  if (centerX > canvas.width * 0.62) return '오른쪽 방향';
+  return '정면 방향';
+}
+function distanceText(sizePx){
+  if (sizePx > 190) return '매우 가까움';
+  if (sizePx > 100) return '가까움';
+  if (sizePx > 55) return '중간 거리';
+  return '멀리 있음';
+}
+function drawMarkerBox(marker, color){
+  const corners = marker.corners;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(corners[0].x, corners[0].y);
+  for (let i=1;i<corners.length;i++) ctx.lineTo(corners[i].x, corners[i].y);
+  ctx.closePath();
+  ctx.stroke();
+  const center = markerCenter(marker);
+  ctx.fillStyle = color;
+  ctx.font = 'bold 28px system-ui';
+  ctx.fillText('ID ' + marker.id, center.x + 8, center.y - 8);
+}
+
+async function startCamera(){
+  if (!window.AR || !AR.Detector) {
+    statusEl.textContent = 'ArUco 라이브러리 로딩 실패';
+    speak('마커 인식 라이브러리를 불러오지 못했습니다. 인터넷 연결과 CDN 접속을 확인하세요.');
+    return;
+  }
+  detector = new AR.Detector();
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: false
+    });
+    video.srcObject = stream;
+    await video.play();
+    running = true;
+    startBtn.disabled = true;
+    stopBtn.disabled = false;
+    statusEl.textContent = '스캔 중';
+    speak('스캔을 시작합니다. 스마트폰을 천천히 좌우로 움직이세요.');
+    requestAnimationFrame(scanLoop);
+  } catch (e) {
+    statusEl.textContent = '카메라 시작 실패';
+    speak('카메라를 시작하지 못했습니다. 권한과 HTTPS 실행 여부를 확인하세요.');
+    debugEl.textContent = e.name + ': ' + e.message;
+  }
+}
+
+function stopCamera(){
+  running = false;
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  stream = null;
+  startBtn.disabled = false;
+  stopBtn.disabled = true;
+  statusEl.textContent = '정지됨';
+}
+
+function scanLoop(){
+  if (!running) return;
+  if (video.readyState >= 2) {
+    const vw = video.videoWidth || 640;
+    const vh = video.videoHeight || 480;
+    const targetW = 640;
+    const targetH = Math.round(targetW * vh / vw);
+    canvas.width = targetW;
+    canvas.height = targetH;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    try {
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const markers = detector.detect(imageData);
+      handleMarkers(markers);
+    } catch (e) {
+      debugEl.textContent = '인식 오류: ' + e.message;
+    }
+  }
+  setTimeout(()=>requestAnimationFrame(scanLoop), 140);
+}
+
+function handleMarkers(markers){
+  if (!markers || markers.length === 0) {
+    debugEl.textContent = '마커 없음: 마커를 크게 출력하고 밝은 곳에서 비춰 보세요.';
+    return;
+  }
+  // 가장 크게 보이는 마커를 우선 안내한다.
+  markers.sort((a,b)=>markerSizePx(b)-markerSizePx(a));
+  const marker = markers[0];
+  const meta = config[String(marker.id)] || { name: '등록되지 않은 마커 ' + marker.id, type: 'unknown', message: '등록되지 않은 마커입니다. 아이디 ' + marker.id + '번입니다.' };
+  const center = markerCenter(marker);
+  const dir = directionText(center.x);
+  const dist = distanceText(markerSizePx(marker));
+  const color = meta.type === 'danger' ? '#f87171' : (meta.type === 'safe' ? '#34d399' : '#60a5fa');
+  drawMarkerBox(marker, color);
+  debugEl.textContent = `인식: ID ${marker.id} / ${meta.name} / ${dir} / ${dist} / 전체 ${markers.length}개`;
+
+  const now = Date.now();
+  const key = marker.id + '-' + dir + '-' + dist;
+  if (key !== lastSpokenKey || now - lastSpokenAt > 3500) {
+    const prefix = meta.type === 'danger' ? '위험 마커. ' : '';
+    const msg = `${prefix}${meta.message} ${dir}. ${dist}.`;
+    speak(msg);
+    if (meta.type === 'danger') vibrate([250,120,250,120,500]);
+    else vibrate([100]);
+    lastSpokenKey = key;
+    lastSpokenAt = now;
+  }
+}
+
+startBtn.addEventListener('click', startCamera);
+stopBtn.addEventListener('click', stopCamera);
+repeatBtn.addEventListener('click', () => speak(lastMessage || '아직 안내할 내용이 없습니다.'));
+saveConfigBtn.addEventListener('click', saveConfig);
+resetConfigBtn.addEventListener('click', resetConfig);
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{}));
+}
+</script>
+</body>
+</html>

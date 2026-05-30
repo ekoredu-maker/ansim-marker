@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>안심마커 출력용</title>
+  <script src="https://cdn.jsdelivr.net/gh/diogok/js-aruco-markers/markers.js"></script>
+  <style>
+    body { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 20px; color:#111827; }
+    h1 { font-size:24px; }
+    .controls { margin: 14px 0; display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+    input { padding:10px; border:1px solid #aaa; border-radius:10px; }
+    button, a { border:0; border-radius:10px; padding:10px 14px; background:#2563eb; color:white; font-weight:700; text-decoration:none; }
+    .grid { display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap:18px; }
+    .card { border:1px solid #999; border-radius:12px; padding:12px; break-inside: avoid; text-align:center; }
+    .label { font-size:20px; font-weight:800; margin:8px 0 2px; }
+    .desc { font-size:14px; color:#333; }
+    canvas { width: 9.5cm; height: 9.5cm; max-width:100%; image-rendering: pixelated; }
+    @media print {
+      .controls, .noprint { display:none; }
+      body { margin: 8mm; }
+      .grid { grid-template-columns: repeat(2, 1fr); gap:8mm; }
+      .card { border:1px solid #000; }
+    }
+  </style>
+</head>
+<body>
+  <h1>안심마커 출력용</h1>
+  <p class="noprint">기본 0~5번 마커를 출력해 벽·문·가구 옆에 붙이세요. 인식이 약하면 마커 크기를 12~15cm 이상으로 키우세요.</p>
+  <div class="controls">
+    <label>시작 ID <input id="startId" type="number" value="0" min="0" max="1023"></label>
+    <label>개수 <input id="count" type="number" value="6" min="1" max="20"></label>
+    <button onclick="renderMarkers()">마커 생성</button>
+    <button onclick="window.print()">인쇄</button>
+    <a href="index.html">스캐너로 돌아가기</a>
+  </div>
+  <div class="grid" id="grid"></div>
+<script>
+const defaultNames = {
+  0: ['침대 끝', '안전 기준점'],
+  1: ['화장실 문', '문턱 주의'],
+  2: ['현관', '외출 기준점'],
+  3: ['욕실 문턱', '위험: 정지'],
+  4: ['소파 등받이', '안전 기준점'],
+  5: ['계단 앞', '위험: 정지']
+};
+function renderMarkers(){
+  const grid = document.getElementById('grid');
+  grid.innerHTML = '';
+  if (typeof makeMarker !== 'function') {
+    grid.innerHTML = '<p>마커 생성 라이브러리를 불러오지 못했습니다. 인터넷 연결을 확인하세요.</p>';
+    return;
+  }
+  const start = parseInt(document.getElementById('startId').value || '0', 10);
+  const count = parseInt(document.getElementById('count').value || '6', 10);
+  for(let i=0;i<count;i++){
+    const id = start + i;
+    const card = document.createElement('div');
+    card.className = 'card';
+    const canvas = makeMarker(id, 420, 420);
+    const label = document.createElement('div');
+    label.className = 'label';
+    label.textContent = `ID ${id} · ${(defaultNames[id]||['미등록','설정에서 등록'])[0]}`;
+    const desc = document.createElement('div');
+    desc.className = 'desc';
+    desc.textContent = (defaultNames[id]||['','스캐너 앱 설정에서 이름을 등록하세요.'])[1];
+    card.appendChild(canvas);
+    card.appendChild(label);
+    card.appendChild(desc);
+    grid.appendChild(card);
+  }
+}
+renderMarkers();
+</script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+{
+  "name": "안심마커 길잡이",
+  "short_name": "안심마커",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#0b1020",
+  "theme_color": "#111827",
+  "description": "ArUco 마커를 읽어 시각장애인 생활공간 기준점을 음성 안내하는 실험용 PWA",
+  "icons": []
+}
